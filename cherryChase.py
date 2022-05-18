@@ -1,47 +1,81 @@
 from random import randrange
 import pygame
+import numpy as np
+
 pygame.init()
 _gameWidth = 500
 _gameHeight = 500
-score = 0 
 win = pygame.display.set_mode((_gameWidth, _gameHeight))
 pygame.display.set_caption("Cherry Chase")
+_grid = np.zeros(250000).reshape(500,500)
+
 red = (255, 0, 0)
 green = (0, 255, 0)
 white = (255, 255, 255)
 blue = (0, 0, 100)
-playerX = 50
-playerY = 50
-health = 100
-_blockages = []
+
+_playerX = 0
+_playerY = 0
+_health = 100
+_blockage = 1
+_cherries = []
+_cherryWidth = 10
+_cherryHeight = 10
 
 def removeOldPlayer(playerX, playerY, playerWidth, playerHeight):
     pygame.draw.rect(win, (0, 0, 0), (playerX, playerY, playerWidth, playerHeight))
 
-def collisionCheck(cherries, playerX, playerY, foodWidth, foodHeight):
-    if len(cherries) > 0:
-        for cherry in cherries:
+def collisionCheck():
+    global _cherries
+    global _playerX
+    global _playerY
+    global _cherryWidth
+    global _cherryHeight
+
+    if len(_cherries) > 0:
+        for cherry in _cherries:
             cherryX = cherry[0]
-            cherryXLowerBound = cherryX - (foodWidth // 2)
-            cherryXUpperBound = cherryX + foodWidth
-            xCollision = playerX < cherryXUpperBound and playerX >= cherryXLowerBound
+            cherryXLowerBound = cherryX - (_cherryWidth // 2)
+            cherryXUpperBound = cherryX + _cherryWidth
+            xCollision = _playerX < cherryXUpperBound and _playerX >= cherryXLowerBound
 
             cherryY = cherry[1]
-            cherryYLowerBound = cherryY - (foodHeight // 2)
-            cherryYUpperBound = cherryY + foodHeight
-            yCollision = playerY < cherryYUpperBound and playerY >= cherryYLowerBound
+            cherryYLowerBound = cherryY - (_cherryHeight // 2)
+            cherryYUpperBound = cherryY + _cherryHeight
+            yCollision = _playerY < cherryYUpperBound and _playerY >= cherryYLowerBound
             if xCollision and yCollision:
-                pygame.draw.rect(win, (0, 0, 0), (cherryX, cherryY, foodWidth, foodHeight))
-                cherries.remove(cherry)
+                pygame.draw.rect(win, (0, 0, 0), (cherryX, cherryY, _cherryWidth, _cherryHeight))
+                _cherries.remove(cherry)
                 return True
 
     return False
 
-def spawnFood(cherries, foodWidth, foodHeight):
-    foodX = randrange(_gameWidth-foodWidth)
-    foodY = randrange(_gameHeight-foodHeight-10)+10
-    pygame.draw.rect(win, red, (foodX, foodY, foodWidth, foodHeight))
-    cherries.append((foodX, foodY))
+def spawnCherry():
+    global _cherries
+    cherryWidth = 10
+    cherryHeight = 10
+    cherryX = randrange(_gameWidth-cherryWidth)
+    cherryY = randrange(_gameHeight-cherryHeight-10)+10
+
+    if validCherry(cherryX, cherryY, cherryWidth, cherryHeight):
+        pygame.draw.rect(win, red, (cherryX, cherryY, cherryWidth, cherryHeight))
+        _cherries.append((cherryX, cherryY))
+    else:
+        spawnCherry()
+
+def validCherry(cherryX, cherryY, cherryWidth, cherryHeight):
+    for i in range(cherryWidth):
+        for j in range(cherryHeight):
+            if _grid[cherryX + i][cherryY + j] != 0:
+                return False
+    return True
+
+def addItemToGrid(x, y, width, height, item):
+    for i in range(width):
+        if x + i < _gameWidth:
+            for j in range(height):
+                if y + j < _gameHeight:
+                    _grid[x+i][y+j] = item
 
 def spawnBlockage():
     x = 0
@@ -63,26 +97,25 @@ def spawnBlockage():
             x = 0
             y += 50
         if y >= _gameHeight:
-            print(i)
             return
 
 def spawnVerticalLineBlockage(x, y):
-    global _blockages
+    global _blockage
     width = 10
     height = 30
     pygame.draw.rect(win, blue, (x, y, width, height))
-    _blockages.append((x, y, width, height))
+    addItemToGrid(x, y, width, height, _blockage)
 
 def spawnLongVerticalLineBlockage(x, y):
     spawnVerticalLineBlockage(x, y)
     spawnVerticalLineBlockage(x, y + 30)
 
 def spawnHorizontalLineBlockage(x, y):
-    global _blockages
+    global _blockage
     width = 30
     height = 10
     pygame.draw.rect(win, blue, (x, y, width, height))
-    _blockages.append((x, y, width, height))
+    addItemToGrid(x, y, width, height, _blockage)
 
 def spawnLongHorizontalLineBlockage(x, y):
     spawnHorizontalLineBlockage(x, y)
@@ -151,71 +184,51 @@ def spawnBottomRightCornerBlockage(x, y):
         spawnLongVerticalLineBlockage(x + 20, y)       
 
 def validMove(playerX, playerY):
-    global _blockages
-    # globalize player width & height
-    playerWidth = 5
-    playerHeight = 5 
+    global _grid
+    return _grid[playerX][playerY] == 0
 
-    # might be better to create a dictionary of blockages. faster look-up
-    for blockage in _blockages:
-        print("blockage: ", blockage)
-        blockageXLowerBound = blockage[0]
-        blockageXUpperBound = blockageXLowerBound + blockage[2]
-        xCollision = playerX + playerWidth - 1 >= blockageXLowerBound and playerX < blockageXUpperBound
-        print("x's lower:%s upper:%s" % (blockageXLowerBound, blockageXUpperBound))
-        blockageYLowerBound = blockage[1]
-        blockageYUpperBound = blockageYLowerBound + blockage[3]
-        yCollision = playerY >= blockageYLowerBound and playerY <= blockageYUpperBound
-        print("y's lower:%s upper:%s" % (blockageYLowerBound, blockageYUpperBound))
-
-        if xCollision and yCollision:
-            print("should not be able allowed %s,%s" % (playerX, playerY))
-            return False
-        
-    return True
-
-def checkPlayerMovement(cherries, foodWidth, foodHeight, playerWidth, playerHeight):
-    global playerX
-    global playerY
-    global health
+def checkPlayerMovement(playerWidth, playerHeight):
+    global _playerX
+    global _playerY
+    global _health
     step = 5
     cherryEaten = False
 
     keys = pygame.key.get_pressed()
     if keys[pygame.K_UP]:
-        if validMove(playerX, playerY - step):
-            if playerY > step:
-                playerY -= step
-                cherryEaten = collisionCheck(cherries, playerX, playerY, foodWidth, foodHeight)
+        if validMove(_playerX, _playerY - step):
+            if _playerY > step:
+                _playerY -= step
+                cherryEaten = collisionCheck()
     if keys[pygame.K_DOWN]:
-        if validMove(playerX, playerY + step):
-            if playerY < _gameHeight - playerHeight:
-                playerY += step
-                cherryEaten = collisionCheck(cherries, playerX, playerY, foodWidth, foodHeight)
+        if validMove(_playerX, _playerY + step):
+            if _playerY < _gameHeight - playerHeight:
+                _playerY += step
+                cherryEaten = collisionCheck()
     if keys[pygame.K_LEFT]:
-        if validMove(playerX - step, playerY):
-            if playerX > step:
-                playerX -= step
-                cherryEaten = collisionCheck(cherries, playerX, playerY, foodWidth, foodHeight)
+        if validMove(_playerX - step, _playerY):
+            if _playerX > step:
+                _playerX -= step
+                cherryEaten = collisionCheck()
     if keys[pygame.K_RIGHT]:
-        if validMove(playerX + step, playerY):
-            if playerX < _gameWidth - playerWidth:
-                playerX += step
-                cherryEaten = collisionCheck(cherries, playerX, playerY, foodWidth, foodHeight)        
+        if validMove(_playerX + step, _playerY):
+            if _playerX < _gameWidth - playerWidth:
+                _playerX += step
+                cherryEaten = collisionCheck()        
     if cherryEaten:
-        if health < 75:
-            health += 25
+        if _health < 75:
+            _health += 25
         else:
-            health = 100 
+            _health = 100 
         # speed = speed * 1.1, if this is enabled we need to speed up food drop. Else impossible
-    pygame.draw.rect(win, (255, 255, 255), (playerX, playerY, playerWidth, playerHeight))
+    pygame.draw.rect(win, (255, 255, 255), (_playerX, _playerY, playerWidth, playerHeight))
     
 def drawHealthBar():
-    global health
-    health -= 0.25
+    global _health
+    _health -= 0.25
     healthBarWidth = 100
     pygame.draw.rect(win, red, (_gameWidth - healthBarWidth, 0, healthBarWidth, 10))
-    pygame.draw.rect(win, green, (_gameWidth - healthBarWidth, 0, health, 10)) 
+    pygame.draw.rect(win, green, (_gameWidth - healthBarWidth, 0, _health, 10)) 
 
 def endGameCheck():
     for event in pygame.event.get():
@@ -226,16 +239,13 @@ def endGameCheck():
 def gameLoop():
     run = True
 
-    global playerX
-    global playerY
-    global health
+    global _playerX
+    global _playerY
+    global _health
     playerWidth = 5
     playerHeight = 5
-    foodWidth = 10
-    foodHeight = 10
     foodDropWait = 150
     foodDropCountdown = 0
-    cherries = []
 
     spawnBlockage()
 
@@ -247,11 +257,11 @@ def gameLoop():
 
         if foodDropCountdown <= 1:
             foodDropCountdown = foodDropWait
-            spawnFood(cherries, foodWidth, foodHeight)
+            spawnCherry()
         foodDropCountdown -= 1
 
-        removeOldPlayer(playerX, playerY, playerWidth, playerHeight)
-        checkPlayerMovement(cherries, foodWidth, foodHeight, playerWidth, playerHeight)
+        removeOldPlayer(_playerX, _playerY, playerWidth, playerHeight)
+        checkPlayerMovement(playerWidth, playerHeight)
         
         # draw updates
         pygame.display.update()
@@ -264,9 +274,10 @@ quit()
 #       1) (DONE) Change score into health bar
 #       2) (DONE) Lower the health as the game runs. So that the player needs to "eat" cherries to survive
 #       3) (DONE) Build a blockage type structure
-#       4) Place blockages to form a maze type scenario
-#       5) Check collision on maze tpye scenario
-#       5) Other people also try eat teh cherries
+#       4) (DONE) Place blockages to form a maze type scenario
+#       5) Check collision on maze type scenario
+#       6) Food valid spawn (check maze numpy)
+#       5) Other people also try eat the cherries
 # 
 # 
 # 
